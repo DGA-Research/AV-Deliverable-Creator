@@ -378,15 +378,22 @@ if workbook_file:
     }
 
 
-# ── STEP 2: Transcript and Book Link CSVs ───────────────────────────────────
-col1, col2 = st.columns(2)
+
+# ── STEP 2: Asset, Transcript, and Book Link CSVs ───────────────────────────
+col1, col2, col3 = st.columns(3)
 with col1:
+    asset_csv = st.file_uploader(
+        "Asset Links CSV\n(filename → Drive URL for .mp4/.mp3 files)",
+        type=["csv"],
+        key="asset_csv"
+    )
+with col2:
     transcript_csv = st.file_uploader(
         "Individual Transcript Links CSV\n(filename → Drive URL for .docx/.txt files)",
         type=["csv"],
         key="transcript_csv"
     )
-with col2:
+with col3:
     book_csv = st.file_uploader(
         "Transcript Book Links CSV\n(book_number → Drive URL)",
         type=["csv"],
