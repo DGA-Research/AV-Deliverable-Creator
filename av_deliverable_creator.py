@@ -367,12 +367,15 @@ if workbook_file:
         st.stop()
 
     st.markdown('<p class="section-header">Step 1a — Map Columns</p>', unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
-        book_col = st.selectbox("Transcript Book Doc Link column", headers, key="book_col")
+        asset_col = st.selectbox("Asset Link (Google Drive) column", headers, key="asset_col")
     with col2:
+        book_col = st.selectbox("Transcript Book Doc Link column", headers, key="book_col")
+    with col3:
         trans_col = st.selectbox("Individual Transcript Link column", headers, key="trans_col")
     column_mapping = {
+        "asset": asset_col,
         "book": book_col,
         "transcript": trans_col,
     }
