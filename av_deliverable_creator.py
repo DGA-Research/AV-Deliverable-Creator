@@ -367,42 +367,26 @@ if workbook_file:
         st.stop()
 
     st.markdown('<p class="section-header">Step 1a — Map Columns</p>', unsafe_allow_html=True)
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
-        asset_col = st.selectbox("Asset Link (Google Drive) column", headers, key="asset_col")
-    with col2:
         book_col = st.selectbox("Transcript Book Doc Link column", headers, key="book_col")
-    with col3:
+    with col2:
         trans_col = st.selectbox("Individual Transcript Link column", headers, key="trans_col")
     column_mapping = {
-        "asset": asset_col,
         "book": book_col,
         "transcript": trans_col,
     }
 
-# ── STEP 2: Drive Link CSVs ──────────────────────────────────────────────────
-st.markdown('<p class="section-header">Step 2 — Upload Drive Link Mappings (optional but recommended)</p>', unsafe_allow_html=True)
-st.markdown("""
-<div class="tip">
-💡 <b>How to get these in 2 minutes:</b> Open your Drive folder → select all files →
-right-click → Get links → paste into a spreadsheet with columns <code>filename</code> and <code>drive_url</code> → export as CSV.
-</div>
-""", unsafe_allow_html=True)
 
-col1, col2, col3 = st.columns(3)
+# ── STEP 2: Transcript and Book Link CSVs ───────────────────────────────────
+col1, col2 = st.columns(2)
 with col1:
-    asset_csv = st.file_uploader(
-        "AV Asset Links CSV\n(filename → Drive URL for .mp4/.mp3 files)",
-        type=["csv"],
-        key="asset_csv"
-    )
-with col2:
     transcript_csv = st.file_uploader(
-        "Individual Transcript Links CSV\n(filename → Drive URL for .docx files)",
+        "Individual Transcript Links CSV\n(filename → Drive URL for .docx/.txt files)",
         type=["csv"],
         key="transcript_csv"
     )
-with col3:
+with col2:
     book_csv = st.file_uploader(
         "Transcript Book Links CSV\n(book_number → Drive URL)",
         type=["csv"],
