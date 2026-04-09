@@ -256,29 +256,21 @@ def process_workbook(
 
         norm_stem = normalize(stem)
 
-        # ── Asset Link (user-mapped column) ──
-        existing_c = ws.cell(excel_row, asset_col_idx).value if asset_col_idx else None
-        asset_url = (
-            asset_link_index.get(norm_stem) or
-            asset_link_index.get(norm_stem + ".mp4") or
-            asset_link_index.get(norm_stem + ".mp3")
-        )
-        if asset_url and asset_col_idx:
-            display = (stem + ".mp4") if ".mp3" not in stem.lower() else (stem + ".mp3")
-            hyperlink_cell(ws, excel_row, asset_col_idx, asset_url, display.strip())
-            stats["asset_links_filled"] += 1
-        elif existing_c and not str(existing_c).startswith("http"):
-            stats["missing_asset"].append(stem)
-
-        # ── Individual Transcript Link (user-mapped column) ──
+        # ── Individual Transcript Link (robust: .docx/.txt) ──
         trans_url = (
-            transcript_link_index.get(norm_stem) or
-            transcript_link_index.get(norm_stem + ".docx")
+            transcript_link_index.get(norm_stem)
+            or transcript_link_index.get(norm_stem + ".docx")
+            or transcript_link_index.get(norm_stem + ".txt")
         )
         if not trans_url and norm_stem in transcript_files:
             trans_url = None
         if trans_url and trans_col_idx:
-            hyperlink_cell(ws, excel_row, trans_col_idx, trans_url, stem.strip() + ".docx")
+            # Use the correct extension for display
+            if transcript_link_index.get(norm_stem + ".txt"):
+                display_name = stem.strip() + ".txt"
+            else:
+                display_name = stem.strip() + ".docx"
+            hyperlink_cell(ws, excel_row, trans_col_idx, trans_url, display_name)
             stats["transcript_links_filled"] += 1
         else:
             stats["missing_transcript"].append(stem)
@@ -303,6 +295,7 @@ def process_workbook(
 
     out = io.BytesIO()
     wb.save(out)
+    print("Processing complete. Stats:", stats)
     return out.getvalue(), stats
 
 
@@ -515,29 +508,23 @@ if st.button("▶ Generate Deliverable Spreadsheet", type="primary", use_contain
     except Exception as e:
         st.warning(f"Could not preview output: {e}")
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown(f'<div class="stat-box"><div class="stat-num">{stats["total_rows"]}</div>'
                     f'<div class="stat-label">Total Rows</div></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="stat-box"><div class="stat-num">{stats["asset_links_filled"]}</div>'
-                    f'<div class="stat-label">Asset Links Filled (Col C)</div></div>', unsafe_allow_html=True)
-    with c3:
         st.markdown(f'<div class="stat-box"><div class="stat-num">{stats["transcript_links_filled"]}</div>'
-                    f'<div class="stat-label">Transcript Links Filled (Col E)</div></div>', unsafe_allow_html=True)
-    with c4:
+                    f'<div class="stat-label">Transcript Links Filled</div></div>', unsafe_allow_html=True)
+    with c3:
         st.markdown(f'<div class="stat-box"><div class="stat-num">{stats["book_links_filled"]}</div>'
-                    f'<div class="stat-label">Book Links Filled (Col D)</div></div>', unsafe_allow_html=True)
+                    f'<div class="stat-label">Book Links Filled</div></div>', unsafe_allow_html=True)
 
-    if stats["missing_asset"]:
-        with st.expander(f"⚠️ {len(stats['missing_asset'])} rows missing asset Drive links"):
-            for name in stats["missing_asset"]:
-                st.write(f"• {name}")
-
+    st.markdown("### ⚠️ Missing Transcript Links")
     if stats["missing_transcript"]:
-        with st.expander(f"⚠️ {len(stats['missing_transcript'])} rows missing individual transcript links"):
-            for name in stats["missing_transcript"]:
-                st.write(f"• {name}")
+        for name in stats["missing_transcript"]:
+            st.write(f"• {name}")
+    else:
+        st.write("None!")
 
     # ── DOWNLOAD ─────────────────────────────────────────────────────────────
     st.download_button(
