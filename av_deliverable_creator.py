@@ -129,14 +129,15 @@ def build_book_link_map(book_df: pd.DataFrame) -> dict:
     return index
 
 
-def row_data_index(ws) -> list:
+def row_data_index(ws, filename_col_idx) -> list:
     """
     Return list of (excel_row_num, filename_str) for all non-empty data rows.
     Skips the header row (row 1).
+    filename_col_idx: 1-based column index for filename
     """
     rows = []
     for r in range(2, ws.max_row + 1):
-        cell_b = ws.cell(r, COL_FILENAME).value
+        cell_b = ws.cell(r, filename_col_idx).value
         if cell_b is None:
             continue
         fn = str(cell_b).strip()
@@ -211,6 +212,7 @@ def process_workbook(
     book_link_map: dict,          # book_number -> drive_url
     book_chunk_size: int,
     candidate_prefix: str,
+    column_mapping: dict,         # {'asset': colname, 'book': colname, 'transcript': colname}
 ) -> tuple[bytes, dict]:
     """
     Main processing function.
@@ -219,7 +221,16 @@ def process_workbook(
     wb = openpyxl.load_workbook(io.BytesIO(wb_bytes))
     ws = wb.active
 
-    data_rows = row_data_index(ws)
+    # Map column names to 1-based indices
+    header_row = [str(ws.cell(1, c+1).value).strip() for c in range(ws.max_column)]
+    def col_idx(colname):
+        return header_row.index(colname) + 1 if colname in header_row else None
+    asset_col_idx = col_idx(column_mapping['asset'])
+    book_col_idx = col_idx(column_mapping['book'])
+    trans_col_idx = col_idx(column_mapping['transcript'])
+    filename_col_idx = col_idx('File Name') or 2  # fallback to 2 if not found
+
+    data_rows = row_data_index(ws, filename_col_idx)
     stats = {
         "total_rows": len(data_rows),
         "asset_links_filled": 0,
@@ -245,47 +256,42 @@ def process_workbook(
 
         norm_stem = normalize(stem)
 
-        # ── Column C: Asset Link ──────────────────────────────────────────
-        existing_c = ws.cell(excel_row, COL_ASSET_LINK).value
-        # Try to match with .mp4 and .mp3 variants
+        # ── Asset Link (user-mapped column) ──
+        existing_c = ws.cell(excel_row, asset_col_idx).value if asset_col_idx else None
         asset_url = (
             asset_link_index.get(norm_stem) or
             asset_link_index.get(norm_stem + ".mp4") or
             asset_link_index.get(norm_stem + ".mp3")
         )
-        if asset_url:
+        if asset_url and asset_col_idx:
             display = (stem + ".mp4") if ".mp3" not in stem.lower() else (stem + ".mp3")
-            hyperlink_cell(ws, excel_row, COL_ASSET_LINK, asset_url, display.strip())
+            hyperlink_cell(ws, excel_row, asset_col_idx, asset_url, display.strip())
             stats["asset_links_filled"] += 1
         elif existing_c and not str(existing_c).startswith("http"):
-            # Already has a filename but no URL — flag it
             stats["missing_asset"].append(stem)
 
-        # ── Column E: Individual Transcript Link ─────────────────────────
+        # ── Individual Transcript Link (user-mapped column) ──
         trans_url = (
             transcript_link_index.get(norm_stem) or
             transcript_link_index.get(norm_stem + ".docx")
         )
-        # Also check uploaded transcript files
         if not trans_url and norm_stem in transcript_files:
-            trans_url = None  # file uploaded but no Drive link yet
-
-        if trans_url:
-            hyperlink_cell(ws, excel_row, COL_TRANS_LINK, trans_url, stem.strip() + ".docx")
+            trans_url = None
+        if trans_url and trans_col_idx:
+            hyperlink_cell(ws, excel_row, trans_col_idx, trans_url, stem.strip() + ".docx")
             stats["transcript_links_filled"] += 1
         else:
             stats["missing_transcript"].append(stem)
 
-        # ── Column D: Transcript Book Doc Link ───────────────────────────
+        # ── Transcript Book Doc Link (user-mapped column) ──
         book_number = (data_idx // book_chunk_size) + 1
         book_url = book_link_map.get(book_number)
-        if book_url:
-            hyperlink_cell(ws, excel_row, COL_BOOK_LINK, book_url, f"Transcript Book {book_number}")
+        if book_url and book_col_idx:
+            hyperlink_cell(ws, excel_row, book_col_idx, book_url, f"Transcript Book {book_number}")
             stats["book_links_filled"] += 1
-        else:
-            # Write placeholder so researcher knows which book this row belongs to
-            ws.cell(excel_row, COL_BOOK_LINK).value = f"[Book {book_number} — paste link]"
-            ws.cell(excel_row, COL_BOOK_LINK).font = Font(
+        elif book_col_idx:
+            ws.cell(excel_row, book_col_idx).value = f"[Book {book_number} — paste link]"
+            ws.cell(excel_row, book_col_idx).font = Font(
                 color="999999", italic=True, name="Calibri", size=10
             )
 
@@ -341,6 +347,7 @@ def validate_workbook_headers(wb_bytes: bytes, expected_headers: list[str]) -> t
     except Exception:
         return False, []
 
+
 workbook_file = st.file_uploader(
     "Upload your AV tracking spreadsheet (.xlsx)",
     type=["xlsx"],
@@ -352,6 +359,33 @@ candidate_prefix = st.text_input(
     value="MI James",
     help='The short name that appears in every filename, e.g. "MI James" or "OH Brown"'
 )
+
+# ── COLUMN MAPPING ──
+column_mapping = {}
+headers = []
+if workbook_file:
+    file_bytes = workbook_file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes))
+        ws = wb.active
+        headers = [str(ws.cell(1, c+1).value).strip() for c in range(ws.max_column)]
+    except Exception:
+        st.error("Could not read headers from uploaded workbook.")
+        st.stop()
+
+    st.markdown('<p class="section-header">Step 1a — Map Columns</p>', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        asset_col = st.selectbox("Asset Link (Google Drive) column", headers, key="asset_col")
+    with col2:
+        book_col = st.selectbox("Transcript Book Doc Link column", headers, key="book_col")
+    with col3:
+        trans_col = st.selectbox("Individual Transcript Link column", headers, key="trans_col")
+    column_mapping = {
+        "asset": asset_col,
+        "book": book_col,
+        "transcript": trans_col,
+    }
 
 # ── STEP 2: Drive Link CSVs ──────────────────────────────────────────────────
 st.markdown('<p class="section-header">Step 2 — Upload Drive Link Mappings (optional but recommended)</p>', unsafe_allow_html=True)
@@ -406,17 +440,15 @@ st.divider()
 
 # ── PROCESS BUTTON ────────────────────────────────────────────────────────────
 
+
 if st.button("▶ Generate Deliverable Spreadsheet", type="primary", use_container_width=True):
     if not workbook_file:
         st.error("Please upload the AV workbook first.")
         st.stop()
-
-    # Validate headers before processing
-    file_bytes = workbook_file.read()
-    valid_headers, found_headers = validate_workbook_headers(file_bytes, EXPECTED_HEADERS)
-    if not valid_headers:
-        st.error(f"The uploaded workbook does not match the expected template.\n\nExpected: {EXPECTED_HEADERS}\nFound: {found_headers}")
+    if not column_mapping or not all(column_mapping.values()):
+        st.error("Please map all required columns before proceeding.")
         st.stop()
+    # file_bytes already read above
 
     with st.spinner("Processing..."):
         # Build asset link index
@@ -465,6 +497,7 @@ if st.button("▶ Generate Deliverable Spreadsheet", type="primary", use_contain
                 book_link_map=book_map,
                 book_chunk_size=int(book_chunk),
                 candidate_prefix=candidate_prefix.strip(),
+                column_mapping=column_mapping,
             )
         except Exception as e:
             st.error(f"Processing error: {e}")
