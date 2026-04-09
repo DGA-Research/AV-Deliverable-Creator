@@ -413,7 +413,18 @@ book_chunk = st.number_input(
     help="Each book covers this many consecutive rows. Default is 250."
 )
 
+
+# ── OUTPUT FOLDER & WORD FILE OPTIONS ───────────────────────────────────────
 st.divider()
+st.markdown('<p class="section-header">Step 5 — Output Options</p>', unsafe_allow_html=True)
+from pathlib import Path
+output_folder = st.text_input(
+    "Output folder for Word files (absolute path)",
+    value=str((Path(__file__).parent / "output").resolve()),
+    help="Where to save uploaded and/or generated Word files. Must exist."
+)
+save_uploaded = st.checkbox("Save uploaded transcript .docx files to output folder", value=True)
+generate_word = st.checkbox("Generate new Word files for each row (from spreadsheet/CSV)", value=False)
 
 # ── PROCESS BUTTON ────────────────────────────────────────────────────────────
 
@@ -458,11 +469,43 @@ if st.button("▶ Generate Deliverable Spreadsheet", type="primary", use_contain
             except Exception as e:
                 st.warning(f"Could not parse book CSV: {e}. Please ensure it has columns 'book_number' and 'drive_url'.")
 
-        # Build uploaded transcript docx index
+        # Build uploaded transcript docx index and save if requested
         uploaded_transcripts = {}
-        for f in (transcript_docx_files or []):
-            key = normalize(f.name)
-            uploaded_transcripts[key] = (f.name, f.read())
+        output_path = Path(output_folder)
+        if save_uploaded and output_path.exists():
+            for f in (transcript_docx_files or []):
+                key = normalize(f.name)
+                data = f.read()
+                uploaded_transcripts[key] = (f.name, data)
+                # Save uploaded file
+                out_file = output_path / f.name
+                with open(out_file, "wb") as out_f:
+                    out_f.write(data)
+        else:
+            for f in (transcript_docx_files or []):
+                key = normalize(f.name)
+                uploaded_transcripts[key] = (f.name, f.read())
+
+        # Optionally generate new Word files for each row
+        if generate_word and output_path.exists():
+            import docx
+            # Example: generate a Word file for each row in the spreadsheet
+            try:
+                wb = openpyxl.load_workbook(io.BytesIO(file_bytes))
+                ws = wb.active
+                header_row = [str(ws.cell(1, c+1).value).strip() for c in range(ws.max_column)]
+                filename_col_idx = header_row.index('File Name') + 1 if 'File Name' in header_row else 2
+                for r in range(2, ws.max_row + 1):
+                    file_name = str(ws.cell(r, filename_col_idx).value).strip()
+                    if not file_name:
+                        continue
+                    doc = docx.Document()
+                    doc.add_heading(file_name, 0)
+                    # Optionally add more content from the row here
+                    out_file = output_path / (file_name + ".docx")
+                    doc.save(str(out_file))
+            except Exception as e:
+                st.warning(f"Could not generate Word files: {e}")
 
         # Run processing
         try:
