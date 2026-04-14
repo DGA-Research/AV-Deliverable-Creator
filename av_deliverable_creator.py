@@ -351,7 +351,11 @@ with col3:
 
 # ── Step 3: Book settings ─────────────────────────────────────────────────────
 st.markdown('<p class="section-header">Step 3 — Transcript Book Settings</p>', unsafe_allow_html=True)
-use_treg_books = st.checkbox("Use Treg Taylor book links (books 1–13, 31 rows each)", value=True)
+use_treg_books = st.checkbox(
+    "Use built-in book links for Treg Taylor (optional)",
+    value=True,
+    help="Check this only if you are working with Treg Taylor's data. For other candidates, leave this unchecked and upload your own Transcript Book Links CSV below."
+)
 book_chunk = st.number_input(
     "Rows per transcript book",
     min_value=1, max_value=1000, value=BOOK_CHUNK_SIZE, step=1,
